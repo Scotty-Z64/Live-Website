@@ -99,6 +99,12 @@ def plan(sections: list[Section], normalised: dict[int, fitz.Document]) -> tuple
 
 
 # ── Pass 3 ──────────────────────────────────────────────────────────────────────────────────
+def safe(text: str | None) -> str:
+    """Base-14 PDF fonts are Latin-1 only: map common typographic characters, drop the rest."""
+    t = (text or "").translate(str.maketrans({"—": "-", "–": "-", "’": "'", "‘": "'", "“": '"', "”": '"', "•": "·", "…": "..."}))
+    return t.encode("latin-1", "replace").decode("latin-1")
+
+
 def _cover(doc: fitz.Document, m: BinderMeta, total: int) -> None:
     p = doc.new_page(width=A4_W, height=A4_H)
     p.draw_rect(fitz.Rect(0, 0, A4_W, 120), color=None, fill=(0.06, 0.16, 0.27))
@@ -108,11 +114,11 @@ def _cover(doc: fitz.Document, m: BinderMeta, total: int) -> None:
                        ("Closing date", m.closing), ("Bidder", m.bidder_name), ("Total pages", str(total))]:
         p.insert_text((40, y), label.upper(), fontsize=9, fontname="helv", color=(0.35, 0.35, 0.35))
         rect = fitz.Rect(40, y + 6, A4_W - 40, y + 60)
-        p.insert_textbox(rect, val or "—", fontsize=14, fontname="hebo")
+        p.insert_textbox(rect, safe(val) or "-", fontsize=14, fontname="hebo")
         y += 66
     if m.tender_box_address:
         p.insert_text((40, A4_H - 90), "DELIVER TO TENDER BOX:", fontsize=9, fontname="hebo")
-        p.insert_textbox(fitz.Rect(40, A4_H - 84, A4_W - 40, A4_H - 40), m.tender_box_address, fontsize=10, fontname="helv")
+        p.insert_textbox(fitz.Rect(40, A4_H - 84, A4_W - 40, A4_H - 40), safe(m.tender_box_address), fontsize=10, fontname="helv")
 
 
 def _index(doc: fitz.Document, sections: list[Section], index_pages: int) -> list[tuple[int, fitz.Rect, int]]:
@@ -120,7 +126,7 @@ def _index(doc: fitz.Document, sections: list[Section], index_pages: int) -> lis
     for si, s in enumerate(sections, 1):
         rows.append((f"TAB {si}  {s.title.upper()}", s.start_page, True))
         for it in s.items:
-            rows.append((f"      {it.title}" + ("   ✎" if it.needs_signature else ""), it.start_page, False))
+            rows.append((f"      {it.title}" + ("   [SIGN]" if it.needs_signature else ""), it.start_page, False))
     links = []
     for pi in range(index_pages):
         p = doc.new_page(width=A4_W, height=A4_H)
@@ -128,6 +134,7 @@ def _index(doc: fitz.Document, sections: list[Section], index_pages: int) -> lis
         y = 95
         for text, page_no, bold in rows[pi * INDEX_ROWS_PER_PAGE:(pi + 1) * INDEX_ROWS_PER_PAGE]:
             font = "hebo" if bold else "helv"
+            text = safe(text)
             p.insert_text((40, y), text[:85], fontsize=10 if bold else 9.5, fontname=font)
             num = f"{page_no}"
             p.insert_text((A4_W - 40 - fitz.get_text_length(num, fontname=font, fontsize=10), y), num, fontsize=10, fontname=font)
@@ -137,7 +144,7 @@ def _index(doc: fitz.Document, sections: list[Section], index_pages: int) -> lis
                         color=(0.7, 0.7, 0.7), dashes="[1 3] 0", width=0.6)
             links.append((doc.page_count - 1, fitz.Rect(36, y - 11, A4_W - 36, y + 4), page_no))
             y += 21
-        p.insert_text((40, A4_H - 40), "✎ = requires wet-ink signature — see 04_Wet_Ink_Signing_Map.pdf", fontsize=8, fontname="helv",
+        p.insert_text((40, A4_H - 40), "[SIGN] = requires wet-ink signature - see 04_Wet_Ink_Signing_Map.pdf", fontsize=8, fontname="helv",
                       color=(0.4, 0.4, 0.4))
     return links
 
@@ -147,7 +154,7 @@ def _stamp_footers(doc: fitz.Document, m: BinderMeta) -> None:
     for i, p in enumerate(doc):
         y = A4_H - 7 * MM
         p.draw_line(fitz.Point(MARGIN_SIDE, y - 10), fitz.Point(A4_W - MARGIN_SIDE, y - 10), color=(0.6, 0.6, 0.6), width=0.4)
-        p.insert_text((MARGIN_SIDE, y), f"{m.bidder_name[:40]} · {m.tender_reference[:40]}", fontsize=7, fontname="helv", color=(0.3, 0.3, 0.3))
+        p.insert_text((MARGIN_SIDE, y), safe(f"{m.bidder_name[:40]} · {m.tender_reference[:40]}"), fontsize=7, fontname="helv", color=(0.3, 0.3, 0.3))
         label = f"Page {i + 1} of {total}"
         p.insert_text(((A4_W - fitz.get_text_length(label, fontname="hebo", fontsize=8)) / 2, y), label, fontsize=8, fontname="hebo")
         bates = f"{m.bates_prefix}-{i + 1:06d}"
@@ -165,9 +172,9 @@ def tab_dividers(sections: list[Section], m: BinderMeta) -> bytes:
         p.insert_textbox(fitz.Rect(A4_W - 66, y0 + 8, A4_W - 4, y0 + tab_h - 10), f"{i + 1}", fontsize=28, fontname="hebo",
                          color=(1, 1, 1), align=fitz.TEXT_ALIGN_CENTER)
         p.insert_text((60, 300), f"TAB {i + 1}", fontsize=22, fontname="hebo", color=(0.06, 0.16, 0.27))
-        p.insert_textbox(fitz.Rect(60, 320, A4_W - 100, 460), s.title.upper(), fontsize=30, fontname="hebo")
-        p.insert_text((60, 490), f"Binder pages {s.start_page}–{s.start_page + s.page_count - 1}", fontsize=12, fontname="helv")
-        p.insert_text((60, A4_H - 50), f"{m.tender_reference} · {m.bidder_name}", fontsize=9, fontname="helv", color=(0.4, 0.4, 0.4))
+        p.insert_textbox(fitz.Rect(60, 320, A4_W - 100, 460), safe(s.title.upper()), fontsize=30, fontname="hebo")
+        p.insert_text((60, 490), f"Binder pages {s.start_page}-{s.start_page + s.page_count - 1}", fontsize=12, fontname="helv")
+        p.insert_text((60, A4_H - 50), safe(f"{m.tender_reference} · {m.bidder_name}"), fontsize=9, fontname="helv", color=(0.4, 0.4, 0.4))
     return doc.tobytes(garbage=3, deflate=True)
 
 
@@ -200,20 +207,23 @@ def spine_label(spec: dict, m: BinderMeta) -> bytes:
         p.insert_textbox(fitz.Rect(x0 + 2, y0 + 4, x0 + w - 2, y0 + 20 * MM), "BID", fontsize=14, fontname="hebo",
                          color=(1, 1, 1), align=fitz.TEXT_ALIGN_CENTER)
         # vertical text along the spine (rotate=90 reads bottom-to-top)
-        text = f"{m.tender_reference}  ·  {m.bidder_name}" + (f"  ·  VOL {vol}/{spec['volumes']}" if spec["volumes"] > 1 else "")
+        text = safe(f"{m.tender_reference}  ·  {m.bidder_name}" + (f"  ·  VOL {vol}/{spec['volumes']}" if spec["volumes"] > 1 else ""))
         fs = min(16, (w - 8) * 0.55)
         tb = fitz.Rect(x0 + 4, y0 + 24 * MM, x0 + w - 4, y0 + h - 6)
         p.insert_textbox(tb, text, fontsize=fs, fontname="hebo", rotate=90, align=fitz.TEXT_ALIGN_CENTER)
-        p.insert_text((40, 50), f"Lever-arch spine insert — cut along crop marks (actual size {spec['label_width_mm']} × {spec['label_height_mm']} mm)",
+        p.insert_text((40, 50), f"Lever-arch spine insert - cut along crop marks (actual size {spec['label_width_mm']} x {spec['label_height_mm']} mm)",
                       fontsize=9, fontname="helv")
-        p.insert_text((40, 64), f"{spec['sheets']} sheets ≈ {spec['content_thickness_mm']} mm → {spec['spine_width_mm']} mm lever-arch file"
+        p.insert_text((40, 64), f"{spec['sheets']} sheets = approx. {spec['content_thickness_mm']} mm of paper -> {spec['spine_width_mm']} mm lever-arch file"
                       + (f", {spec['volumes']} volumes" if spec["volumes"] > 1 else ""), fontsize=9, fontname="helv")
     return doc.tobytes(garbage=3, deflate=True)
 
 
 def signing_map(final: fitz.Document, sections: list[Section], m: BinderMeta) -> tuple[bytes, list[dict]]:
     rows: list[dict] = []
+    first_content = min((s.start_page for s in sections), default=1) - 1
     for i, page in enumerate(final):
+        if i < first_content:  # cover + index carry no signature blocks of their own
+            continue
         for kw, kind in (("SIGNATURE", "FULL SIGNATURE"), ("Signature", "FULL SIGNATURE"), ("YES / NO", "DECLARATION (YES/NO)"),
                          ("Commissioner of Oaths stamp", "COMMISSIONER STAMP")):
             for h in page.search_for(kw)[:4]:
@@ -230,18 +240,18 @@ def signing_map(final: fitz.Document, sections: list[Section], m: BinderMeta) ->
             if s.start_page <= pg < s.start_page + s.page_count:
                 for it in s.items:
                     if it.start_page <= pg < it.start_page + it.page_count:
-                        return f"{s.title} › {it.title}"
+                        return f"{s.title} > {it.title}"
                 return s.title
         return "Cover / Index"
 
     doc = fitz.open()
     p = doc.new_page(width=A4_W, height=A4_H)
     p.insert_text((40, 55), "WET-INK SIGNING MAP", fontsize=18, fontname="hebo")
-    p.insert_text((40, 75), f"{m.tender_reference} · {m.bidder_name} · {final.page_count} pages", fontsize=9, fontname="helv")
+    p.insert_text((40, 75), safe(f"{m.tender_reference} · {m.bidder_name} · {final.page_count} pages"), fontsize=9, fontname="helv")
     y = 100
     if m.initial_every_page:
         p.insert_textbox(fitz.Rect(40, y - 10, A4_W - 40, y + 20),
-                         f"The tender requires INITIALS ON EVERY PAGE: initial pages 1–{final.page_count} at the bottom-right corner.",
+                         f"The tender requires INITIALS ON EVERY PAGE: initial pages 1-{final.page_count} at the bottom-right corner.",
                          fontsize=10, fontname="hebo", color=(0.6, 0.1, 0.1))
         y += 30
     header = [("Page", 40), ("Requirement", 85), ("Position", 215), ("Document", 285)]
@@ -256,9 +266,9 @@ def signing_map(final: fitz.Document, sections: list[Section], m: BinderMeta) ->
         p.insert_text((40, y), str(r["page"]), fontsize=9, fontname="helv")
         p.insert_text((85, y), r["requirement"], fontsize=9, fontname="helv")
         p.insert_text((215, y), f"{r['y_mm']} mm from top", fontsize=9, fontname="helv")
-        p.insert_text((285, y), r["document"][:55], fontsize=8.5, fontname="helv")
+        p.insert_text((285, y), safe(r["document"])[:55], fontsize=8.5, fontname="helv")
         y += 14
-    p.insert_text((40, A4_H - 40), "□ Tick each row once signed. Sign in blue ink. Do not use correction fluid.", fontsize=8, fontname="helv")
+    p.insert_text((40, A4_H - 40), "Tick each row once signed. Sign in blue ink. Do not use correction fluid.", fontsize=8, fontname="helv")
     return doc.tobytes(garbage=3, deflate=True), uniq
 
 
@@ -280,7 +290,7 @@ def compile_binder(meta: BinderMeta, sections: list[Section]) -> dict:
         final[page_idx].insert_link({"kind": fitz.LINK_GOTO, "from": rect, "page": target - 1, "to": fitz.Point(0, 0)})
     toc = [[1, "Cover", 1], [1, "Master Index", 2]]
     for si, s in enumerate(sections, 1):
-        toc.append([1, f"Tab {si} — {s.title}", s.start_page])
+        toc.append([1, f"Tab {si} - {s.title}", s.start_page])
         toc += [[2, it.title, it.start_page] for it in s.items]
     final.set_toc(toc)
     _stamp_footers(final, meta)

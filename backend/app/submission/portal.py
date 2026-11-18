@@ -12,7 +12,6 @@ live supplier account before use.
 """
 from __future__ import annotations
 
-import io
 import json
 import logging
 import os
@@ -164,7 +163,7 @@ def submit(tenant_id: str, bid_id: str, encrypted_credentials: str) -> dict:
         fmt = {"base": base, "reference": tender.tender_reference.replace("/", "-")}
         get_redis().delete(otp_key(bid_id))
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=s.playwright_headless)
+            browser = p.chromium.launch(**s.chromium_launch_kwargs())
             page = browser.new_page(viewport={"width": 1366, "height": 900})
             try:
                 page.goto(ad["login_url"].format(**fmt))
@@ -225,12 +224,3 @@ def submit(tenant_id: str, bid_id: str, encrypted_credentials: str) -> dict:
 def provide_otp(bid_id: str, otp: str) -> None:
     get_redis().set(otp_key(bid_id), otp.strip(), ex=600)
 
-
-def zip_bytes(files: dict[str, bytes]) -> bytes:
-    import zipfile
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for n, d in files.items():
-            zf.writestr(n, d)
-    return buf.getvalue()

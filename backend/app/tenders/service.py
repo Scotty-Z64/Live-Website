@@ -59,6 +59,10 @@ def apply_preflight(session: Session, tender: Tender, pack_name: str, pack: byte
     fields = state["fields"]
     if fields.get("tender_reference") and tender.tender_reference.startswith("MANUAL-"):
         tender.tender_reference = fields["tender_reference"][:250]
+    if fields.get("title") and (not tender.title or tender.source_portal == "MANUAL_UPLOAD" and tender.title.lower().endswith((".zip", ".pdf"))):
+        tender.title = fields["title"][:500]
+    if fields.get("issuing_entity") and not tender.issuing_entity:
+        tender.issuing_entity = fields["issuing_entity"][:500]
     if fields.get("closing_timestamp"):
         tender.closing_timestamp = _aware(datetime.fromisoformat(fields["closing_timestamp"]))
     if fields.get("preference_system"):

@@ -1,0 +1,37 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+      - name: Create non-superuser app role + test database (RLS must not be bypassed)
+        env: { PGPASSWORD: postgres }
+        run: |
+          psql -h localhost -U postgres -c "CREATE ROLE tendersync_app LOGIN PASSWORD 'tendersync_app' NOSUPERUSER NOBYPASSRLS;"
+          psql -h localhost -U postgres -c "CREATE DATABASE tendersync_test OWNER tendersync_app;"
+          psql -h localhost -U postgres -d tendersync_test -c "CREATE EXTENSION vector; ALTER SCHEMA public OWNER TO tendersync_app;"
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && python -m pytest -q
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: cd frontend && npm ci && npx tsc --noEmit && npm run build

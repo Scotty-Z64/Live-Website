@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,6 +34,13 @@ from ..validation import stamp
 from ..validation.pipeline import ingest_upload
 from . import pricing
 from .readiness import LABELS, audit_bid, has_blockers
+
+
+SAST = ZoneInfo("Africa/Johannesburg")
+
+
+def sast(dt: datetime) -> datetime:
+    return dt.astimezone(SAST)
 
 
 class GateError(Exception):
@@ -66,7 +74,7 @@ def prepare_briefing_pack(session: Session, bid: BidPackage, rep: dict, signator
     if bid.briefing_gate_status == BriefingGateStatus.VERIFIED_ATTENDED:
         raise GateError("Attendance is already verified.")
     t = tenant_dict(bid.tenant_id)
-    when = tender.briefing_timestamp.strftime("%A %d %B %Y, %H:%M") if tender.briefing_timestamp else "As per tender notice"
+    when = sast(tender.briefing_timestamp).strftime("%A %d %B %Y, %H:%M SAST") if tender.briefing_timestamp else "As per tender notice"
     pdf = letters.letter_of_authority(
         t, {"tender_reference": tender.tender_reference, "title": tender.title, "issuing_entity": tender.issuing_entity,
             "briefing_when": when, "briefing_venue_or_link": tender.briefing_venue_or_link}, rep, signatory)
@@ -180,8 +188,8 @@ def sbd_values(session: Session, bid: BidPackage) -> dict[str, str | None]:
     level = t.get("bee_level")
     v: dict[str, str | None] = {
         "bid_number": tender.tender_reference,
-        "closing_date": tender.closing_timestamp.astimezone().strftime("%Y-%m-%d") if tender.closing_timestamp else None,
-        "closing_time": tender.closing_timestamp.astimezone().strftime("%H:%M") if tender.closing_timestamp else None,
+        "closing_date": sast(tender.closing_timestamp).strftime("%Y-%m-%d") if tender.closing_timestamp else None,
+        "closing_time": sast(tender.closing_timestamp).strftime("%H:%M") if tender.closing_timestamp else None,
         "bid_description": tender.title,
         "supplier_name": t["legal_name"],
         "trading_name": t.get("trading_name"),
@@ -315,7 +323,7 @@ def compile_hardcopy(session: Session, bid: BidPackage, actor: str) -> dict:
     ref_slug = "".join(ch for ch in tender.tender_reference.upper() if ch.isalnum())[:12]
     meta = binder_mod.BinderMeta(
         bidder_name=t["legal_name"], tender_reference=tender.tender_reference, tender_title=tender.title or "",
-        issuing_entity=tender.issuing_entity or "", closing=tender.closing_timestamp.strftime("%d %B %Y %H:%M") if tender.closing_timestamp else "",
+        issuing_entity=tender.issuing_entity or "", closing=sast(tender.closing_timestamp).strftime("%d %B %Y %H:%M SAST") if tender.closing_timestamp else "",
         bates_prefix=f"TS-{ref_slug}", initial_every_page=bool((tender.preflight or {}).get("fields", {}).get("initial_every_page")),
         tender_box_address=tender.physical_tender_box_address,
     )

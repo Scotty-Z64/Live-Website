@@ -221,6 +221,12 @@ def extract_rules(files: list[PackFile]) -> tuple[dict, dict[str, dict]]:
     if r := _find(docs, r"closing (?:date|time)(?: and time)?[ \t]*[:\-]?[ \t]*([^\n]{6,60})",
                   accept=lambda m: parse_datetime(m.group(1)) is not None, addenda_first=True):
         put("closing_timestamp", parse_datetime(r[0].group(1)).isoformat(), r[1])
+    if r := _find(docs, r"(?:description|project (?:name|title)|bid description|tender description)[ \t]*[:\-][ \t]*([^\n]{8,200})"):
+        put("title", r[0].group(1).strip(), r[1])
+    entity_rx = (r"^[ \t]*((?:city|municipality|metropolitan|department|dept\.?|provincial|national treasury|[a-z ]*seta\b|"
+                 r"[a-z &]*(?:soc|holdings|agency|board|water|authority|council|ltd))[^\n]{0,80}?)(?:[ \t]+[—\-·|][ \t]+|\n)")
+    if r := _find([f for f in docs if f.kind == "RFP"] or docs, entity_rx, flags=re.I | re.M):
+        put("issuing_entity", r[0].group(1).strip(" -—·|"), r[1])
     if r := _find(docs, r"\b(80\s?/\s?20|90\s?/\s?10)\b(?:\s*preference)?"):
         put("preference_system", r[0].group(1).replace(" ", "").replace("/", "_"), r[1])
     if r := _find(docs, r"(?:minimum|threshold)[^\n.]{0,80}?(\d{2,3})\s*(?:%|percent|points)[^\n.]{0,60}?functionality|functionality[^\n.]{0,120}?(?:minimum|threshold|at least)[^\n.]{0,40}?(\d{2,3})\s*(?:%|percent|points)"):

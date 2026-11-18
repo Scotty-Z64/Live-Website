@@ -88,7 +88,7 @@ class PlaywrightListingHarvester(Harvester):
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=get_settings().playwright_headless)
+            browser = p.chromium.launch(**get_settings().chromium_launch_kwargs())
             try:
                 page = browser.new_page(user_agent=UA)
                 page.goto(self.cfg.list_url, wait_until="networkidle", timeout=90_000)

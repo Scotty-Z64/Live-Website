@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 
 from ..bids import service as bids
 from ..bids.embeddings import embed_many, provider
@@ -148,8 +147,7 @@ def directors(p: Principal = Depends(current_principal)) -> list[dict]:
 @router.get("/vault")
 def vault(p: Principal = Depends(current_principal)) -> dict:
     with tenant_session(p.tenant_id) as s:
-        docs = list(s.scalars(select(VaultDocument).where(VaultDocument.doc_category.is_not(None) | (VaultDocument.processing_state == "NEEDS_CATEGORY"))
-                              .order_by(VaultDocument.uploaded_at.desc())))
+        docs = list(s.scalars(select(VaultDocument).order_by(VaultDocument.uploaded_at.desc())))
         slots = {c.value: [] for c in DocCategory}
         unclassified = []
         for d in docs:

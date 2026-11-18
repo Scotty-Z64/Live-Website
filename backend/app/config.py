@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     clamav_required: bool | None = None
 
     playwright_headless: bool = True
+    # Optional path to a pre-installed Chromium (otherwise Playwright's bundled browser is used).
+    playwright_executable_path: str = ""
     submission_otp_timeout_s: int = 900
 
     vat_rate: float = 0.15
@@ -60,6 +62,12 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    def chromium_launch_kwargs(self) -> dict:
+        kw: dict = {"headless": self.playwright_headless}
+        if self.playwright_executable_path:
+            kw["executable_path"] = self.playwright_executable_path
+        return kw
 
     @property
     def av_required(self) -> bool:
