@@ -11,3 +11,4 @@ frontend/out/
 samples/out/
 test-results/
 playwright-report/
+*.tsbuildinfo
