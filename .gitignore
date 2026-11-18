@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+var/
+node_modules/
+.next/
+frontend/out/
+*.egg-info/
+.pytest_cache/
+samples/out/
+test-results/
+playwright-report/
